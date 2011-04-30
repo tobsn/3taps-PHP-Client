@@ -6,6 +6,7 @@ class threeTapsClient {
 	public $authId;
 	public $host = '3taps.net';
 	public $response;
+	public $debug = false;
 	
 	private static function json_decode($json) {
 		$comment = false;
@@ -32,7 +33,7 @@ class threeTapsClient {
 		self::$clients[$type] = $client;
 	}
 
-	public function __construct($authId, $agentId) {
+	public function __construct($authId = '', $agentId = '') {
 		$this->authId = $authId;
 		$this->agentId = $agentId;
 		
@@ -66,6 +67,8 @@ class threeTapsClient {
 		if (!empty($post)) $write .= 'Content-Length: ' . strlen($post) . "\r\n";
 		$write .= 'Connection: close' . "\r\n\r\n";
 		if (!empty($post)) $write .= $post . "\r\n\r\n";
+		
+		if ($this->debug) error_log($write);
 
 		fwrite($socket, $write);
 		$chunkedResponseString = '';
@@ -94,6 +97,8 @@ class threeTapsClient {
 			$responseString .= $chunk;
 			$chars += strlen($chunk);
 		}
+		
+		if ($this->debug) error_log($responseString);
 
 		if (strpos($responseString, '503 Service Temporarily Unavailable') > 0) {
 			return false;
