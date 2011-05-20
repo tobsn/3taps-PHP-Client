@@ -2,40 +2,18 @@
 class threeTapsClient {
 	public static $clients = array();
 
-	public $agentId;
 	public $authId;
-	public $host = '3taps.net';
+	public $host = 'api.3taps.com';
 	public $response;
-	public $debug = false;
-	
-	private static function json_decode($json) {
-		$comment = false;
-		$out = '$x=';
-	  
-		for ($i=0; $i<strlen($json); $i++)
-		{
-			if (!$comment)
-			{
-				if (($json[$i] == '{') || ($json[$i] == '['))       $out .= ' array(';
-				else if (($json[$i] == '}') || ($json[$i] == ']'))   $out .= ')';
-				else if ($json[$i] == ':')    $out .= '=>';
-				else                         $out .= $json[$i];          
-			}
-			else $out .= $json[$i];
-			if ($json[$i] == '"' && $json[($i-1)]!="\\")    $comment = !$comment;
-		}
-		
-		@eval($out . ';');
-		return isset($x) ? $x : null;
-	}
+	public $debug = false; // If set to true, will print out requests to error_log()
+
 	
 	public static function register($type, $client) {
 		self::$clients[$type] = $client;
 	}
 
-	public function __construct($authId = '', $agentId = '') {
+	public function __construct($authId) {
 		$this->authId = $authId;
-		$this->agentId = $agentId;
 		
 		foreach (self::$clients as $type => $client) {
 			$this->$type = new $client($this);
@@ -45,11 +23,13 @@ class threeTapsClient {
 	public function request($path, $method, $getParams = array(), $postParams = array()) {
 		$url = $path . $method;
 
-		if (!empty($getParams)) {
+		if (!empty($getParams) || (empty($getParams) && empty($postParams))) {
+			$getParams['authID'] = $this->authId;
 			$url .= '?' . http_build_query($getParams);
 		}
 		
 		if (!empty($postParams)) {
+			$postParams['authID'] = $this->authId;
 			$post = http_build_query($postParams);
 		} else {
 			$post = null;
@@ -61,7 +41,7 @@ class threeTapsClient {
 			return false;
 		}
 
-		$write = 'POST ' . $url . ' HTTP/1.1' . "\r\n";
+		$write = (!empty($post) ? 'POST ' : 'GET ') . $url . ' HTTP/1.1' . "\r\n";
 		$write .= 'Host: ' . $this->host . "\r\n";
 		$write .= 'Content-Type: application/x-www-form-urlencoded' . "\r\n";
 		if (!empty($post)) $write .= 'Content-Length: ' . strlen($post) . "\r\n";
@@ -119,42 +99,55 @@ class threeTapsClient {
 		
 		return $this->response;
 	}
+
+	private static function json_decode($json) {
+		$comment = false;
+		$out = '$x=';
+	  
+		for ($i=0; $i<strlen($json); $i++) {
+			if (!$comment) {
+				if (($json[$i] == '{') || ($json[$i] == '[')) $out .= ' array(';
+				else if (($json[$i] == '}') || ($json[$i] == ']')) $out .= ')';
+				else if ($json[$i] == ':') $out .= '=>';
+				else $out .= $json[$i];          
+			}
+			else $out .= $json[$i];
+			if ($json[$i] == '"' && $json[($i-1)]!="\\") $comment = !$comment;
+		}
+		
+		@eval($out . ';');
+		return isset($x) ? $x : null;
+	}
 }
 
 class threeTapsGeocoderClient {
-	public $auth = true;
 	public $client;
 	public $path = '/geocoder/';
 	
-	public function __construct($authId, $agentId = null) {
+	public function __construct($authId) {
 		if (is_a($authId, 'threeTapsClient')) {
 			$this->client = $authId;
 		} else {
-			$this->client = new threeTapsClient($authId, $agentId);
+			$this->client = new threeTapsClient($authId);
 		}
 	}
 	
 	public function geocode($data) {
-		return $this->client->request($this->path, 'geocode', null, array(
-			'agentID' => $this->client->agentId,
-			'authID' => $this->client->authId,
-			'data' => $data,
-		));
+		return $this->client->request($this->path, 'geocode', null, array('data' => json_encode($data)));
 	}
 }
 
 threeTapsClient::register('geocoder', 'threeTapsGeocoderClient');
 
 class threeTapsReferenceClient {
-	public $auth = false;
 	public $client;
 	public $path = '/reference/';
 	
-	public function __construct($authId, $agentId = null) {
+	public function __construct($authId) {
 		if (is_a($authId, 'threeTapsClient')) {
 			$this->client = $authId;
 		} else {
-			$this->client = new threeTapsClient($authId, $agentId);
+			$this->client = new threeTapsClient($authId);
 		}
 	}
 	
@@ -182,40 +175,23 @@ class threeTapsReferenceClient {
 threeTapsClient::register('reference', 'threeTapsReferenceClient');
 
 class threeTapsPostingClient {
-	public $auth = false;
 	public $client;
 	public $path = '/posting/';
 	
-	public function __construct($authId, $agentId = null) {
+	public function __construct($authId) {
 		if (is_a($authId, 'threeTapsClient')) {
 			$this->client = $authId;
 		} else {
-			$this->client = new threeTapsClient($authId, $agentId);
+			$this->client = new threeTapsClient($authId);
 		}
 	}
 	
 	public function create($data) {
-		return $this->client->request($this->path, 'create', null, array(
-			'posts' => $data,
-		));
+		return $this->client->request($this->path, 'create', null, array('postings' => json_encode($data)));
 	}
 	
 	public function delete($data) {
-		return $this->client->request($this->path, 'delete', null, array(
-			'agentID' => $this->client->agentId,
-			'authID' => $this->client->authId,
-			'data' => $data,
-		));
-	}
-	
-	public function error($postKey) {
-		return $this->client->request($this->path, 'error/' . $postKey, null, null);
-	}
-	
-	public function exists($ids) {
-		return $this->client->request($this->path, 'exists', null, array(
-			'ids' => $ids,
-		));
+		return $this->client->request($this->path, 'delete', null, array('data' => json_encode($data)));
 	}
 	
 	public function get($postKey) {
@@ -223,33 +199,24 @@ class threeTapsPostingClient {
 	}
 	
 	public function update($data) {
-		return $this->client->request($this->path, 'update', null, array(
-			'agentID' => $this->client->agentId,
-			'authID' => $this->client->authId,
-			'data' => $data,
-		));
+		return $this->client->request($this->path, 'update', null, array('data' => json_encode($data)));
 	}
 }
 
 threeTapsClient::register('posting', 'threeTapsPostingClient');
 
 class threeTapsSearchClient {
-	public $auth = false;
 	public $client;
 	public $path = '/search/';
 	
-	public function __construct($authId, $agentId = null) {
+	public function __construct($authId) {
 		if (is_a($authId, 'threeTapsClient')) {
 			$this->client = $authId;
 		} else {
-			$this->client = new threeTapsClient($authId, $agentId);
+			$this->client = new threeTapsClient($authId);
 		}
 	}
-	
-	public function bestMatch($params) {
-		return $this->client->request($this->path, 'best-match', $params, null);
-	}
-	
+
 	public function count($params) {
 		return $this->client->request($this->path, 'count', $params, null);
 	}
@@ -270,28 +237,27 @@ class threeTapsSearchClient {
 threeTapsClient::register('search', 'threeTapsSearchClient');
 
 class threeTapsStatusClient {
-	public $auth = false;
 	public $client;
 	public $path = '/status/';
 	
-	public function __construct($authId, $agentId = null) {
+	public function __construct($authId) {
 		if (is_a($authId, 'threeTapsClient')) {
 			$this->client = $authId;
 		} else {
-			$this->client = new threeTapsClient($authId, $agentId);
+			$this->client = new threeTapsClient($authId);
 		}
 	}
 	
-	public function get($params) {
-		return $this->client->request($this->path, 'get', null, $params);
+	public function get($postings) {
+		return $this->client->request($this->path, 'get', null, array('postings' => json_encode($postings)));
 	}
 	
 	public function system() {
 		return $this->client->request($this->path, 'system', null, null);
 	}
 	
-	public function update($params) {
-		return $this->client->request($this->path, 'update', null, $params);
+	public function update($postings) {
+		return $this->client->request($this->path, 'update', null, array('postings' => json_encode($postings)));
 	}
 }
 
