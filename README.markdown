@@ -16,7 +16,7 @@ See test cases for examples.
 
 Here's a simple one to get you started.
 
-$system_message = $this->client = new threeTapsClient(API_KEY)->status->system();
+$system_message = $this->client = new threeTapsClient("YOUR API KEY")->status->system();
 
 ## License
 
